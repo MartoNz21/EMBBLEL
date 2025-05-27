@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>EMG BLE Plotter</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      margin: 0;
+      padding: 20px;
+      font-family: sans-serif;
+    }
+    canvas {
+      width: 100% !important;
+      height: auto !important;
+    }
+  </style>
+</head>
+<body>
+
+  <h2>EMG BLE Plotter</h2>
+  <button onclick="connect()">Connect</button>
+  <canvas id="chart" width="400" height="200"></canvas>
+
+  <script>
+    const ctx = document.getElementById('chart').getContext('2d');
+    const chart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: [],
+        datasets: [{
+          label: 'Voltaje EMG (V)',
+          data: [],
+          borderColor: 'blue',
+          fill: false
+        }]
+      },
+      options: {
+        responsive: true,
+        animation: false,
+        scales: {
+          y: {
+            min: 0,
+            max: 3.3,
+            title: {
+              display: true,
+              text: 'Voltaje (V)'
+            }
+          },
+          x: {
+            display: false
+          }
+        }
+      }
+    });
+
+    let device;
+    let characteristic;
+
+    async function connect() {
+      const serviceUUID = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+      const characteristicUUID = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
+
+      try {
+        device = await navigator.bluetooth.requestDevice({
+          filters: [{ namePrefix: 'ESP32' }],
+          optionalServices: [serviceUUID]
+        });
+
+        const server = await device.gatt.connect();
+        const service = await server.getPrimaryService(serviceUUID);
+        characteristic = await service.getCharacteristic(characteristicUUID);
+
+        await characteristic.startNotifications();
+        characteristic.addEventListener('characteristicvaluechanged', handleData);
+      } catch (error) {
+        alert('Error de conexión: ' + error);
+      }
+    }
+
+    function handleData(event) {
+      const value = new TextDecoder().decode(event.target.value);
+      const voltaje = parseFloat(value);
+
+      if (!isNaN(voltaje)) {
+        chart.data.labels.push('');
+        chart.data.datasets[0].data.push(voltaje);
+
+        if (chart.data.labels.length > 100) {
+          chart.data.labels.shift();
+          chart.data.datasets[0].data.shift();
+        }
+
+        chart.update();
+      }
+    }
+  </script>
+
+</body>
+</html>
