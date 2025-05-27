@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EMG BLE Plotter</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      margin: 0;
+      padding: 2rem;
+    }
+    canvas {
+      max-width: 100%;
+    }
+    button {
+      padding: 1rem 2rem;
+      font-size: 1rem;
+      background-color: #007BFF;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      margin-bottom: 1rem;
+      cursor: pointer;
+    }
+    h1 {
+      margin-bottom: 1rem;
+    }
+  </style>
+</head>
+<body>
+  <h1>Visualizador EMG BLE</h1>
+  <button id="connectBtn">Conectar al ESP32</button>
+  <canvas id="emgChart" height="200"></canvas>
+
+  <script>
+    const serviceUUID = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+    const characteristicUUID = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
+
+    const maxPoints = 200;
+    const dataPoints = [];
+    const labels = [];
+
+    const ctx = document.getElementById('emgChart').getContext('2d');
+    const chart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: 'EMG Filtrado (V)',
+          data: dataPoints,
+          borderColor: 'rgb(75, 192, 192)',
+          backgroundColor: 'rgba(75, 192, 192, 0.2)',
+          tension: 0.2
+        }, {
+          label: 'Umbral',
+          data: Array(maxPoints).fill(1.0),
+          borderColor: 'red',
+          borderDash: [5, 5],
+          pointRadius: 0,
+          fill: false
+        }]
+      },
+      options: {
+        animation: false,
+        responsive: true,
+        scales: {
+          x: {
+            display: false
+          },
+          y: {
+            min: 0,
+            max: 3.3
+          }
+        }
+      }
+    });
+
+    document.getElementById('connectBtn').addEventListener('click', async () => {
+      try {
+        const device = await navigator.bluetooth.requestDevice({
+          filters: [{ name: 'ESP32_EMG_BLE' }],
+          optionalServices: [serviceUUID]
+        });
+
+        const server = await device.gatt.connect();
+        const service = await server.getPrimaryService(serviceUUID);
+        const characteristic = await service.getCharacteristic(characteristicUUID);
+
+        await characteristic.startNotifications();
+        characteristic.addEventListener('characteristicvaluechanged', handleNotification);
+      } catch (error) {
+        alert('Error al conectar: ' + error);
+      }
+    });
+
+    function handleNotification(event) {
+      const value = new TextDecoder().decode(event.target.value);
+      const parsed = parseFloat(value);
+      if (!isNaN(parsed)) {
+        dataPoints.push(parsed);
+        labels.push('');
+        if (dataPoints.length > maxPoints) {
+          dataPoints.shift();
+          labels.shift();
+        }
+        chart.update();
+      }
+    }
+  </script>
+</body>
+</html>
