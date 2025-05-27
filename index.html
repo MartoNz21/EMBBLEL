@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>EMG BLE Plotter</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      font-family: sans-serif;
+      margin: 0;
+      padding: 0;
+      background-color: #f5f5f5;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    h2 {
+      margin-top: 20px;
+    }
+
+    button {
+      padding: 10px 20px;
+      margin: 20px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+
+    #chart-container {
+      width: 95vw;
+      max-width: 900px;
+      height: 400px;
+    }
+
+    canvas {
+      width: 100% !important;
+      height: 100% !important;
+    }
+  </style>
+</head>
+<body>
+  <h2>Gráfica EMG en Tiempo Real</h2>
+  <button onclick="connect()">🔗 Conectar BLE</button>
+  <div id="chart-container">
+    <canvas id="chart"></canvas>
+  </div>
+
+  <script>
+    const umbral = 1.0;         // Voltaje del umbral
+    const maxPoints = 200;      // Número de muestras a mostrar
+    const chartData = {
+      labels: Array(maxPoints).fill(''),
+      datasets: [
+        {
+          label: 'Señal EMG',
+          data: [],
+          borderColor: 'blue',
+          backgroundColor: 'rgba(0, 0, 255, 0.1)',
+          borderWidth: 1,
+          tension: 0.1
+        },
+        {
+          label: 'Umbral',
+          data: Array(maxPoints).fill(umbral),
+          borderColor: 'red',
+          borderWidth: 1,
+          borderDash: [5, 5],
+          pointRadius: 0
+        }
+      ]
+    };
+
+    const chartConfig = {
+      type: 'line',
+      data: chartData,
+      options: {
+        animation: false,
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          y: {
+            min: 0,
+            max: 3.3,
+            title: {
+              display: true,
+              text: 'Voltaje (V)'
+            }
+          },
+          x: {
+            display: false
+          }
+        },
+        plugins: {
+          legend: {
+            display: true
+          }
+        }
+      }
+    };
+
+    const ctx = document.getElementById('chart').getContext('2d');
+    const chart = new Chart(ctx, chartConfig);
+
+    function updateChart(value) {
+      if (chartData.datasets[0].data.length >= maxPoints) {
+        chartData.datasets[0].data.shift();
+        chartData.datasets[1].data.shift(); // también mover el umbral
+      }
+      chartData.datasets[0].data.push(value);
+      chartData.datasets[1].data.push(umbral);
+      chart.update();
+    }
+
+    async function connect() {
+      try {
+        const device = await navigator.bluetooth.requestDevice({
+          acceptAllDevices: true,
+          optionalServices: ['6e400001-b5a3-f393-e0a9-e50e24dcca9e']
+        });
+
+        const server = await device.gatt.connect();
+        const service = await server.getPrimaryService('6e400001-b5a3-f393-e0a9-e50e24dcca9e');
+        const characteristic = await service.getCharacteristic('6e400003-b5a3-f393-e0a9-e50e24dcca9e');
+
+        await characteristic.startNotifications();
+
+        characteristic.addEventListener('characteristicvaluechanged', (event) => {
+          const value = new TextDecoder().decode(event.target.value);
+          const num = parseFloat(value);
+          if (!isNaN(num)) updateChart(num);
+        });
+
+        alert("✅ Conectado a ESP32 BLE");
+      } catch (error) {
+        alert("❌ Error al conectar: " + error);
+      }
+    }
+  </script>
+</body>
+</html>
